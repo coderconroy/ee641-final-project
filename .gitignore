@@ -1,2 +1,7 @@
 models/
 results/
+samples/
+diffusion/
+output/
+ignore/
+*/__pycache__
