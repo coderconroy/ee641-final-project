@@ -3,6 +3,34 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+class EMA:
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+        self.step = 0
+
+    def update_model_average(self, ma_model, current_model):
+        for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+            old_weight, up_weight = ma_params.data, current_params.data
+            ma_params.data = self.update_average(old_weight, up_weight)
+
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
+    def step_ema(self, ema_model, model, step_start_ema=2000):
+        if self.step < step_start_ema:
+            self.reset_parameters(ema_model, model)
+            self.step += 1
+            return
+        self.update_model_average(ema_model, model)
+        self.step += 1
+
+    def reset_parameters(self, ema_model, model):
+        ema_model.load_state_dict(model.state_dict())
+
+
 class SelfAttention(nn.Module):
     def __init__(self, channels, size):
         super(SelfAttention, self).__init__()
@@ -97,7 +125,7 @@ class Up(nn.Module):
 
 # Since this is a simple UNet, seperate modules are not created for the encoder, decoder and bottleneck
 class UNet(nn.Module):
-    def __init__(self, c_in=3, c_out=3, time_dim=256, device="cuda"):
+    def __init__(self, c_in=3, c_out=3, time_dim=256, num_classes=None, device="cuda"):
         super().__init__()
         self.device = device
         self.time_dim = time_dim
@@ -121,6 +149,9 @@ class UNet(nn.Module):
         self.sa6 = SelfAttention(64, 64)
         self.outc = nn.Conv2d(64, c_out, kernel_size=1)
 
+        if num_classes is not None:
+            self.label_emb = nn.Embedding(num_classes, time_dim)
+
     def pos_encoding(self, t, channels):
         inv_freq = 1.0 / (
             10000
@@ -131,10 +162,14 @@ class UNet(nn.Module):
         pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
         return pos_enc
 
-    def forward(self, x, t):
+    def forward(self, x, t, y=None):
         # Time is embedded using sinusoidal embedding as is the most common DDPM approach
         t = t.unsqueeze(-1).type(torch.float)
         t = self.pos_encoding(t, self.time_dim)
+
+        # Added for conditional diffusion
+        if y is not None:
+            t += self.label_emb(y)
 
         x1 = self.inc(x)
         x2 = self.down1(x1, t)

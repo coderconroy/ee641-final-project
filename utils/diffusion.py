@@ -7,7 +7,6 @@ class Diffusion:
         self.device = device
         self.beta_1 = beta_1
         self.beta_T = beta_T
-        self.image_size = image_size
 
         # Compute beta decay schedule
         self.compute_beta_schedule()
