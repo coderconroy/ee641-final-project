@@ -1,35 +1,39 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.utils import make_grid
 import torch
 
-class EMA:
-    def __init__(self, beta):
-        super().__init__()
-        self.beta = beta
-        self.step = 0
+class EMA(nn.Module):
+    """
+    Manages Exponential Moving Averages for neural network parameters in PyTorch.
+    """
+    def __init__(self, decay_rate):
+        super(EMA, self).__init__()
+        self.decay_rate = decay_rate
+        self.step_count = 0
 
-    def update_model_average(self, ma_model, current_model):
-        for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
-            old_weight, up_weight = ma_params.data, current_params.data
-            ma_params.data = self.update_average(old_weight, up_weight)
+    def apply_parameter_smoothing(self, target_model, source_model):
+        """ Smoothens the parameters of the target model based on the source model. """
+        for source_param, target_param in zip(source_model.parameters(), target_model.parameters()):
+            target_param.data = self.compute_moving_average(target_param.data, source_param.data)
 
-    def update_average(self, old, new):
-        if old is None:
-            return new
-        return old * self.beta + (1 - self.beta) * new
+    def compute_moving_average(self, target, source):
+        """ Calculates the moving average of the parameters. """
+        if target is None:
+            return source
+        return target * self.decay_rate + (1 - self.decay_rate) * source
 
-    def step_ema(self, ema_model, model, step_start_ema=2000):
-        if self.step < step_start_ema:
-            self.reset_parameters(ema_model, model)
-            self.step += 1
-            return
-        self.update_model_average(ema_model, model)
-        self.step += 1
+    def step_ema(self, target_model, source_model, init_step=2000):
+        """ Updates the EMA model's parameters or initializes them depending on the iteration count. """
+        if self.step_count < init_step:
+            self.init_params(target_model, source_model)
+        else:
+            self.apply_parameter_smoothing(target_model, source_model)
+        self.step_count += 1
 
-    def reset_parameters(self, ema_model, model):
-        ema_model.load_state_dict(model.state_dict())
+    def init_params(self, target_model, source_model):
+        """ Initializes the target model's parameters with those from the source model. """
+        target_model.load_state_dict(source_model.state_dict())
 
 class AttentionMechanism(nn.Module):
     """
@@ -238,6 +242,7 @@ class UNet(nn.Module):
         super(UNet, self).__init__()
         self.device = device
         self.embed_size = embed_size
+        self.num_classes = num_classes
 
         # Initialize encoder, bottleneck and decoder
         self.encoder = Encoder(c_in)
@@ -248,6 +253,21 @@ class UNet(nn.Module):
         if num_classes is not None:
             self.y_embed_layer = nn.Embedding(num_classes, embed_size)
 
+    def load_state_dict(self, state_dict, strict=True):
+        """
+        Overrides the load_state_dict method to update y_embed_layer based on num_classes.
+        """
+        # Create embed layer since it is not created in the constructor since the embed size is unknown until the state
+        # is loaded
+        if 'y_embed_layer.weight' in state_dict:
+            embed_shape = state_dict['y_embed_layer.weight'].cpu().numpy().shape
+            self.num_classes = embed_shape[0]
+            self.embed_size = embed_shape[1]
+            self.y_embed_layer = nn.Embedding(self.num_classes, self.embed_size).to(self.device)
+
+        # Call the original load_state_dict
+        super(UNet, self).load_state_dict(state_dict, strict)
+            
     def embed_time(self, t, channels):
         # Generates sinusoidal positional encodings.
         inv_freq = 1.0 / (10000 ** (torch.arange(0, channels, 2, device=self.device).float() / channels))

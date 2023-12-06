@@ -54,9 +54,9 @@ def save_checkpoint(state, filename):
 
 def load_model_eval(checkpoint, model, diffusion, use_ema=False):
     if use_ema:
-        model.load_state_dict(checkpoint['state_dict'])
-    else:
         model.load_state_dict(checkpoint['ema_state_dict'])
+    else:
+        model.load_state_dict(checkpoint['state_dict'])
     diffusion.load_state_dict(checkpoint['diffusion'])
     return checkpoint['loss_history']
 
