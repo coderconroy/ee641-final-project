@@ -63,7 +63,6 @@ def load_model_eval(checkpoint, model, diffusion, use_ema=False):
 
 def get_dataloader(data_dir, batch_size, image_size):
     # Define image transformations
-    # TODO: Review if this can be improved.
     transform = transforms.Compose([
         transforms.Resize(round(image_size * 5/4)),
         transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),

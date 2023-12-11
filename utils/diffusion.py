@@ -7,6 +7,7 @@ class Diffusion:
         self.device = device
         self.beta_1 = beta_1
         self.beta_T = beta_T
+        self.image_size = image_size
 
         # Compute beta decay schedule
         self.compute_beta_schedule()
@@ -57,7 +58,8 @@ class Diffusion:
             'beta_1': self.beta_1,
             'beta_T': self.beta_T,
             'alpha_t': self.alpha,
-            'alpha_bar_t': self.alpha_bar
+            'alpha_bar_t': self.alpha_bar,
+            'image_size': self.image_size
         }
 
     def load_state_dict(self, state):
@@ -67,4 +69,5 @@ class Diffusion:
         self.diffusion_steps = state['diffusion_steps']
         self.beta_1 = state['beta_1']
         self.beta_T = state['beta_T']
+        self.image_size = state['image_size']
         self.compute_beta_schedule()
